@@ -1,0 +1,31 @@
+category,statistic,value,description
+chi2,chi2,32.26142793313056,Full covariance chi-square
+chi2,chi2_red,2.01633924582066,Reduced chi-square
+chi2,p_chi2_analytic,0.009244483035075902,Analytic chi-square p-value
+chi2,p_chi2_empirical,0.026486756621689155,Empirical chi-square p-value
+chi2,sigma_equiv_empirical,1.9351367793798304,Gaussian sigma equivalent
+svd,chi2_svd,29.811845384210866,SVD-regularized chi-square
+svd,chi2_svd_red,1.863240336513179,Reduced SVD chi-square
+svd,p_chi2_svd_analytic,0.01900264572667165,Analytic SVD p-value
+svd,p_chi2_svd_empirical,0.037481259370314844,Empirical SVD p-value
+svd,sigma_svd_equiv,1.7806936031624268,Gaussian sigma equivalent (SVD)
+svd,svd_modes_kept,16.0,Retained SVD modes
+covariance,effective_modes,7.345963790847032,Effective covariance dimensionality
+covariance,covariance_rank,17.0,Covariance rank
+covariance,covariance_condition,549.8276526491146,Covariance condition number
+covariance,hartlap_factor,0.9909954977488744,Hartlap correction factor
+covariance,global_tension,1.394877183849406,RMS normalized deviation
+anisotropy,abs_observed_stat,0.0023446600875277946,Observed RMS anisotropy amplitude
+anisotropy,abs_empirical_p,0.25987006496751625,Empirical anisotropy p-value
+nonparametric,ks_w_stat,0.5294117647058824,KS statistic for w(theta)
+nonparametric,ks_w_pvalue,0.015560640732265447,KS p-value for w(theta)
+nonparametric,ks_w_empirical_p,0.5337331334332833,Empirical KS p-value for w(theta)
+nonparametric,ad_w_stat,4.434873609445533,AD statistic for w(theta)
+nonparametric,ad_w_pvalue,0.00556529298709215,AD p-value for w(theta)
+nonparametric,ad_w_empirical_p,0.3778110944527736,Empirical AD p-value for w(theta)
+nonparametric,ks_abs_stat,0.6666666666666666,KS statistic for |<w>|
+nonparametric,ks_abs_pvalue,0.03356643356643356,KS p-value for |<w>|
+nonparametric,ks_abs_empirical_p,0.15592203898050974,Empirical KS p-value for |<w>|
+nonparametric,ad_abs_stat,2.0015877380657274,AD statistic for |<w>|
+nonparametric,ad_abs_pvalue,0.048659111115590806,AD p-value for |<w>|
+nonparametric,ad_abs_empirical_p,0.16691654172913542,Empirical AD p-value for |<w>|
