@@ -2,7 +2,7 @@
 
 ## 🎯 Overview
 
-The original `Level_4.ipynb` executed the entire Level 4 pipeline in one massive cell:
+The original `frb_isotropy_analysis.ipynb` executed the entire Level 4 pipeline in one massive cell:
 
 ```python
 results = main_level4(run_sensitivity=True, save_tables=True, n_jobs=-1)

@@ -1,7 +1,7 @@
 # Level 4: FRB Isotropy Test With Jackknife Errors
 
 This document describes the Level 4 pipeline implemented in `code4_jackknife.py`
-and used by `Level_4.ipynb`.
+and used by `frb_isotropy_analysis.ipynb`.
 
 Level 4 extends the improved Level 3 analysis by adding jackknife error bars to:
 
