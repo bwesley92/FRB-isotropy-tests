@@ -769,7 +769,9 @@ def save_tables(
     results: dict[str, object],
     prefix:  str | None = None,
 ) -> dict[str, str]:
+    
     """Save analysis tables, diagnostics, and markdown report."""
+    
     prefix = str(prefix or context.config.run_tag)
     paths  = _resolve_table_paths(context, prefix)
     data   = _extract_table_data(results)
