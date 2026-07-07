@@ -478,7 +478,11 @@ def get_absolute_sum(
 
         else:
 
-            val = 0.0
+            # No finite fine bins fall inside this coarse
+            # interval: the statistic is undefined here, not
+            # zero. Downstream consumers (compute_absolute_statistics,
+            # pipeline._filter_valid_h0) already mask/drop NaNs.
+            val = float("nan")
 
         vals.append(
             val

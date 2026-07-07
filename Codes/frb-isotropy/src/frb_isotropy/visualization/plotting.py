@@ -31,6 +31,8 @@ from ..core.models import (
     BootstrapResult,
 )
 
+from ..core.models import InjectionSuite
+
 
 def plot_covariance_diagnostics(
     context: RuntimeContext,
@@ -1145,3 +1147,161 @@ def plot_results_jk_vs_bootstrap(
         frameon=True, framealpha=0.95,
     )
     _save_and_show(fig, d.output_abs)
+
+
+def plot_injection_recovery(
+    suite: InjectionSuite,
+    output_path,
+) -> None:
+    """Plot empirical-SF absorption in an injection-recovery suite."""
+
+    eps = np.asarray(suite.epsilons, dtype=float)
+    results = suite.results
+
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+
+    # ------------------------------------------------------------------
+    # Left panel: baseline-subtracted recovered signal
+    # ------------------------------------------------------------------
+
+    ax = axes[0]
+
+    series = [
+        (
+            "No SF",
+            np.asarray([r.signal_no_sf for r in results], dtype=float),
+            np.asarray([r.signal_no_sf_std for r in results], dtype=float),
+            "o-",
+            "0.25",
+        ),
+        (
+            "Fixed empirical SF",
+            np.asarray([r.signal_fixed_sf for r in results], dtype=float),
+            np.asarray([r.signal_fixed_sf_std for r in results], dtype=float),
+            "s-",
+            "steelblue",
+        ),
+        (
+            "Rebuilt empirical SF",
+            np.asarray([r.signal_rebuilt_sf for r in results], dtype=float),
+            np.asarray([r.signal_rebuilt_sf_std for r in results], dtype=float),
+            "D-",
+            "firebrick",
+        ),
+    ]
+
+    signal_instrumental = np.asarray(
+        [r.signal_fixed_instrumental_sf for r in results],
+        dtype=float,
+    )
+
+    if np.any(np.isfinite(signal_instrumental)):
+        series.insert(
+            2,
+            (
+                "Fixed instrumental SF",
+                signal_instrumental,
+                np.asarray(
+                    [r.signal_fixed_instrumental_sf_std for r in results],
+                    dtype=float,
+                ),
+                "^-",
+                "darkgreen",
+            ),
+        )
+
+    for label, y, yerr, fmt, color in series:
+        ax.errorbar(
+            eps,
+            y,
+            yerr=yerr,
+            fmt=fmt,
+            color=color,
+            capsize=3,
+            linewidth=1.8,
+            markersize=5,
+            label=label,
+        )
+
+    ax.axhline(0.0, color="k", linestyle="--", alpha=0.35)
+    ax.set_xlabel("Injected physical amplitude epsilon")
+    ax.set_ylabel("Recovered 2pACF multipole signal")
+    ax.set_title(f"Physical Signal Recovery (ell={suite.multipole})")
+    ax.legend(frameon=True, framealpha=0.95)
+
+    # ------------------------------------------------------------------
+    # Right panel: absorption by rebuilt empirical SF
+    # ------------------------------------------------------------------
+
+    ax = axes[1]
+
+    retention_fixed = np.asarray(
+        [r.retention_fixed_vs_no_sf for r in results],
+        dtype=float,
+    )
+    retention_rebuilt = np.asarray(
+        [r.retention_rebuilt_vs_fixed for r in results],
+        dtype=float,
+    )
+    retention_instrumental = np.asarray(
+        [r.retention_instrumental_vs_no_sf for r in results],
+        dtype=float,
+    )
+    absorbed = np.asarray(
+        [r.absorption_fraction for r in results],
+        dtype=float,
+    )
+    absorbed_instrumental = np.asarray(
+        [r.absorption_instrumental_vs_no_sf for r in results],
+        dtype=float,
+    )
+
+    ax.axhline(1.0, color="k", linestyle="--", alpha=0.35, label="Full retention")
+    ax.axhline(0.0, color="gray", linestyle=":", alpha=0.45)
+    ax.plot(
+        eps,
+        retention_fixed,
+        "o-",
+        color="steelblue",
+        label="Fixed empirical SF / no SF",
+    )
+    if np.any(np.isfinite(retention_instrumental)):
+        ax.plot(
+            eps,
+            retention_instrumental,
+            "^-",
+            color="darkgreen",
+            label="Fixed instrumental SF / no SF",
+        )
+    ax.plot(
+        eps,
+        retention_rebuilt,
+        "D-",
+        color="firebrick",
+        label="Rebuilt empirical SF / fixed empirical SF",
+    )
+    ax.plot(
+        eps,
+        absorbed,
+        "v-",
+        color="darkorange",
+        label="Absorbed by rebuilt empirical SF",
+    )
+    if np.any(np.isfinite(absorbed_instrumental)):
+        ax.plot(
+            eps,
+            absorbed_instrumental,
+            "x-",
+            color="olive",
+            label="Not retained by instrumental SF",
+        )
+
+    ax.set_xlabel("Injected physical amplitude epsilon")
+    ax.set_ylabel("Fraction")
+    ax.set_title("SF Signal Retention and Absorption")
+    ax.set_ylim(-0.15, 1.25)
+    ax.legend(frameon=True, framealpha=0.95)
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close()

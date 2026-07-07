@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import healpy as hp
 
-from .types import FloatArray
+from .types import FloatArray, BoolArray
 
 
 # ==============================================================================
@@ -476,6 +476,31 @@ class CovarianceDiagnostics:
 
 
 # ==============================================================================
+# Covariance inference result container
+# ==============================================================================
+
+@dataclass(
+    frozen=True,
+    slots=True,
+)
+class CovarianceResult:
+
+    matrix: FloatArray
+
+    mean_profile: FloatArray
+
+    valid_bins: BoolArray
+
+    diagnostics: CovarianceDiagnostics
+
+    estimator: str
+
+    n_mocks: int
+
+    n_bins: int
+
+
+# ==============================================================================
 # Full statistical inference container
 # ==============================================================================
 
@@ -493,12 +518,11 @@ class TestStatistics:
 
     absolute: AbsoluteStatistics
 
-    covariance: CovarianceDiagnostics
+    covariance_result: CovarianceResult
 
     n_mocks: int
 
     n_bins: int
-
 
 # ==============================================================================
 # Jackknife container
@@ -560,3 +584,72 @@ class BootstrapResult:
     w_realizations: np.ndarray
 
     abs_realizations: np.ndarray
+
+
+@dataclass(frozen=True, slots=True)
+class InjectionResult:
+    """Result of one injection-recovery amplitude."""
+
+    epsilon_injected: float
+    multipole: int
+
+    signal_no_sf: float
+    signal_fixed_sf: float
+    signal_rebuilt_sf: float
+
+    signal_no_sf_std: float
+    signal_fixed_sf_std: float
+    signal_rebuilt_sf_std: float
+
+    retention_fixed_vs_no_sf: float
+    retention_rebuilt_vs_fixed: float
+    absorption_fraction: float
+
+    raw_no_sf: float
+    raw_fixed_sf: float
+    raw_rebuilt_sf: float
+
+    baseline_no_sf: float
+    baseline_fixed_sf: float
+    baseline_rebuilt_sf: float
+
+    w_obs_no_sf: FloatArray
+    w_obs_fixed_sf: FloatArray
+    w_obs_rebuilt_sf: FloatArray
+    theta: FloatArray
+
+    signal_fixed_instrumental_sf: float = float("nan")
+    signal_fixed_instrumental_sf_std: float = float("nan")
+    retention_instrumental_vs_no_sf: float = float("nan")
+    retention_instrumental_vs_fixed: float = float("nan")
+    absorption_instrumental_vs_no_sf: float = float("nan")
+    raw_fixed_instrumental_sf: float = float("nan")
+    baseline_fixed_instrumental_sf: float = float("nan")
+    w_obs_fixed_instrumental_sf: FloatArray | None = None
+
+    @property
+    def epsilon_recovered_nosf(self) -> float:
+        """Backward-compatible alias for older notebooks."""
+
+        return self.signal_no_sf
+
+    @property
+    def epsilon_recovered_sf(self) -> float:
+        """Backward-compatible alias for the rebuilt empirical-SF mode."""
+
+        return self.signal_rebuilt_sf
+
+    @property
+    def suppression_factor(self) -> float:
+        """Backward-compatible alias: rebuilt-SF retention relative to fixed SF."""
+
+        return self.retention_rebuilt_vs_fixed
+
+@dataclass(frozen=True, slots=True)
+class InjectionSuite:
+    """Set of results for multiple injected amplitudes."""
+    
+    multipole: int
+    epsilons: FloatArray
+    suppression_factors: FloatArray
+    results: list[InjectionResult]

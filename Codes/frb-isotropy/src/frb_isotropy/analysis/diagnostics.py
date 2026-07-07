@@ -1918,9 +1918,16 @@ def _top_matrix_pairs(
     matrix: pd.DataFrame,
     n: int = 10,
     absolute: bool = True,
+    symmetric: bool = True,
 ) -> pd.DataFrame:
     """
     Extract strongest pairwise survey relations.
+
+    symmetric=True scans only the upper triangle (i, j) with j > i,
+    which is correct for matrices where matrix[i, j] == matrix[j, i]
+    (e.g. Pearson correlation). Directional matrices (e.g. nearest-
+    neighbor overlap fractions, where matrix[i, j] != matrix[j, i] in
+    general) must use symmetric=False so both directions are reported.
     """
 
     # ------------------------------------------------------------------
@@ -1979,12 +1986,21 @@ def _top_matrix_pairs(
         ):
 
             # ----------------------------------------------------------
-            # Upper triangle only
+            # Upper triangle only for symmetric matrices; otherwise
+            # skip just the diagonal so both directions are kept.
             # ----------------------------------------------------------
 
-            if j <= i:
+            if symmetric:
 
-                continue
+                if j <= i:
+
+                    continue
+
+            else:
+
+                if j == i:
+
+                    continue
 
             value = matrix.iloc[
                 i,

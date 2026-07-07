@@ -326,7 +326,6 @@ def main(
         "stats":                stats,
         "chi2_bin_diagnostics": None,        
         "svd_mode_contributions": None,      
-        "covariance_matrix":    getattr(context, "last_covariance_matrix", None),
     }
 
     # ------------------------------------------------------------------

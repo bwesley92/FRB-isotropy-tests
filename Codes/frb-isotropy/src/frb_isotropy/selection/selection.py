@@ -4,20 +4,15 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import healpy as hp
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 
 from numpy.random import Generator
 
 from ..core.config import RuntimeContext
-
 from ..core.types import FloatArray
-
-from ..core.models import (
-    SelectionFunctionSet,
-)
-
+from ..core.models import SelectionFunctionSet
 from ..catalog.catalog import (
     healpix_galactic_mask,
     rotate_healpix_map_to_galactic,
@@ -73,19 +68,14 @@ def split_by_survey(
     df = df.copy()
 
     df["Reporting_Group_s"] = (
-
         df["Reporting_Group_s"]
-
         .fillna("UNKNOWN")
-
         .astype(str)
     )
 
     surveys: dict[
         str,
-        list[
-            tuple[float, float]
-        ],
+        list[tuple[float, float]],
     ] = {}
 
     # ------------------------------------------------------------------
@@ -95,21 +85,14 @@ def split_by_survey(
     for row in df.itertuples(index=False):
 
         groups = list({
-
             g.strip()
-
-            for g in str(
-                row.Reporting_Group_s
-            ).split(",")
-
+            for g in str(row.Reporting_Group_s).split(",")
             if g.strip()
         })
 
         for group in groups:
 
-            if group == "":
-
-                group = "UNKNOWN"
+            group = group or "UNKNOWN"
 
             surveys.setdefault(
                 group,
@@ -126,17 +109,12 @@ def split_by_survey(
     # ------------------------------------------------------------------
 
     survey_dict = {
-
         name: pd.DataFrame(
             values,
-            columns=[
-                "RA",
-                "DEC",
-            ],
+            columns=["RA", "DEC"],
         )
 
-        for name, values
-        in surveys.items()
+        for name, values in surveys.items()
     }
 
     # ------------------------------------------------------------------
@@ -146,39 +124,23 @@ def split_by_survey(
     if verbose:
 
         counts = {
-
             name: len(subdf)
-
-            for name, subdf
-            in survey_dict.items()
+            for name, subdf in survey_dict.items()
         }
 
         sorted_counts = sorted(
             counts.items(),
-            key=lambda x: x[1],
+            key=lambda item: item[1],
             reverse=True,
         )
 
-        print(
-            "\n--- Survey partitioning ---"
-        )
-
-        print(
-            f"Unique surveys: "
-            f"{len(survey_dict)}"
-        )
-
-        print(
-            "\nSurvey populations:"
-        )
+        print("\n--- Survey partitioning ---")
+        print(f"Unique surveys: {len(survey_dict)}")
+        print("\nSurvey populations:")
 
         for name, count in sorted_counts:
 
-            frac = (
-                100.0
-                * count
-                / len(df)
-            )
+            frac = 100.0 * count / len(df)
 
             print(
                 f"{name:>15s} | "
@@ -226,58 +188,41 @@ def build_selection_function(
     # ------------------------------------------------------------------
 
     if nside is None:
-
-        nside = (
-            config.nside_sf
-        )
+        nside = config.nside_sf
 
     if smooth_sigma is None:
-
-        smooth_sigma = (
-            config.smooth_sigma
-        )
+        smooth_sigma = config.smooth_sigma
 
     if gal_cut is None:
-
-        gal_cut = (
-            config.gal_cut
-        )
+        gal_cut = config.gal_cut
 
     # ------------------------------------------------------------------
     # Validation
     # ------------------------------------------------------------------
 
     if not hp.isnsideok(nside):
-
         raise ValueError(
             f"Invalid HEALPix nside: {nside}"
         )
 
     if smooth_sigma < 0:
-
         raise ValueError(
-            "smooth_sigma must be "
-            "non-negative."
+            "smooth_sigma must be non-negative."
         )
 
     if gal_cut < 0:
-
         raise ValueError(
-            "gal_cut must be "
-            "non-negative."
+            "gal_cut must be non-negative."
         )
 
-    npix = hp.nside2npix(
-        nside
-    )
+    npix = hp.nside2npix(nside)
 
     # ------------------------------------------------------------------
     # Pixelized survey map
     # ------------------------------------------------------------------
 
     theta = np.radians(
-        90.0
-        - subdf["DEC"].to_numpy(float)
+        90.0 - subdf["DEC"].to_numpy(float)
     )
 
     phi = np.radians(
@@ -299,14 +244,11 @@ def build_selection_function(
     # Small numerical floor
     # ------------------------------------------------------------------
 
-    counts += (
-        config.selection_function_floor
-    )
+    counts += config.selection_function_floor
 
     total_counts = counts.sum()
 
     if total_counts <= 0:
-
         raise ValueError(
             "Selection function has "
             "zero counts."
@@ -322,14 +264,9 @@ def build_selection_function(
     # Poisson uncertainty
     # ------------------------------------------------------------------
 
-    sf_err_counts = np.sqrt(
-        counts
-    )
+    sf_err_counts = np.sqrt(counts)
 
-    sf_cov_diag = (
-        sf_err_counts
-        / total_counts
-    ) ** 2
+    sf_cov_diag = (sf_err_counts / total_counts) ** 2
 
     # ------------------------------------------------------------------
     # Smoothing
@@ -339,13 +276,10 @@ def build_selection_function(
 
         sf = hp.smoothing(
             sf,
-            sigma=np.radians(
-                smooth_sigma
-            ),
+            sigma=np.radians(smooth_sigma),
         )
 
-        sf = np.clip(
-            sf,
+        sf = np.clip(sf, 
             0.0,
             None,
         )
@@ -362,6 +296,7 @@ def build_selection_function(
     )
 
     sf[~gal_mask] = 0.0
+    sf_cov_diag[~gal_mask] = 0.0
 
     # ------------------------------------------------------------------
     # Final normalization
@@ -370,23 +305,15 @@ def build_selection_function(
     sf_sum = sf.sum()
 
     if sf_sum <= 0:
-
         raise ValueError(
-            "Selection function vanished "
-            "after masking."
+            "Selection function vanished fter masking."
         )
 
     sf /= sf_sum
 
     return (
-        np.asarray(
-            sf,
-            dtype=float,
-        ),
-        np.asarray(
-            sf_cov_diag,
-            dtype=float,
-        ),
+        np.asarray(sf, dtype=float),
+        np.asarray(sf_cov_diag, dtype=float),
     )
 
 
@@ -402,7 +329,6 @@ def build_survey_selection_functions(
     gal_cut: float | None = None,
     use_adaptive_smoothing: bool = False,
 ) -> SelectionFunctionSet | None:
-    
     """
     Build survey-based sky probability maps.
 
@@ -423,9 +349,7 @@ def build_survey_selection_functions(
 
     if config.use_sel_func is False:
 
-        print(
-            "\n--- Selection-function modeling disabled ---"
-        )
+        print("\n--- Selection-function modeling disabled ---")
 
         print(
             "use_sel_func=False "
@@ -440,45 +364,31 @@ def build_survey_selection_functions(
     # ----------------------------------------------------------
 
     if nside is None:
-
-        nside = (
-            config.nside_sf
-        )
+        nside = config.nside_sf
 
     if smooth_sigma is None:
-
-        smooth_sigma = (
-            config.smooth_sigma
-        )
+        smooth_sigma = config.smooth_sigma
 
     if gal_cut is None:
-
-        gal_cut = (
-            config.gal_cut
-        )
+        gal_cut = config.gal_cut
 
     # ----------------------------------------------------------
     # Validation
     # ----------------------------------------------------------
 
     if not hp.isnsideok(nside):
-
         raise ValueError(
             f"Invalid HEALPix nside: {nside}"
         )
 
     if smooth_sigma < 0:
-
         raise ValueError(
-            "smooth_sigma must be "
-            "non-negative."
+            "smooth_sigma must be non-negative."
         )
 
     if gal_cut < 0:
-
         raise ValueError(
-            "gal_cut must be "
-            "non-negative."
+            "gal_cut must be non-negative."
         )
 
     # ----------------------------------------------------------
@@ -491,48 +401,23 @@ def build_survey_selection_functions(
     )
 
     total_survey_memberships = sum(
-
         len(subdf)
-
-        for subdf
-        in surveys.values()
+        for subdf in surveys.values()
     )
 
     if total_survey_memberships <= 0:
-
         raise ValueError(
             "No survey memberships available "
             "for selection-function modeling."
         )
 
-    sf_dict: dict[
-        str,
-        FloatArray,
-    ] = {}
+    sf_dict: dict[str, FloatArray] = {}
+    sf_cov_diag_dict: dict[str, FloatArray] = {}
+    survey_weights: dict[str, float] = {}
 
-    sf_cov_diag_dict: dict[
-        str,
-        FloatArray,
-    ] = {}
-
-    survey_weights: dict[
-        str,
-        float,
-    ] = {}
-
-    print(
-        "\n--- Building selection functions ---"
-    )
-
-    print(
-        f"Unique surveys: "
-        f"{len(surveys)}"
-    )
-
-    print(
-        f"Adaptive smoothing: "
-        f"{use_adaptive_smoothing}"
-    )
+    print("\n--- Building selection functions ---")
+    print(f"Unique surveys: {len(surveys)}")
+    print(f"Adaptive smoothing: {use_adaptive_smoothing}")
 
     # ----------------------------------------------------------
     # Survey loop
@@ -549,14 +434,12 @@ def build_survey_selection_functions(
         if use_adaptive_smoothing:
 
             if len(subdf) < 10:
-
                 effective_sigma = max(
                     smooth_sigma,
                     8.0,
                 )
 
             elif len(subdf) < 30:
-
                 effective_sigma = max(
                     smooth_sigma,
                     5.0,
@@ -566,28 +449,18 @@ def build_survey_selection_functions(
         # Build survey selection function
         # ------------------------------------------------------
 
-        sf, sf_cov_diag = (
-
-            build_selection_function(
+        sf, sf_cov_diag = build_selection_function(
                 context,
                 subdf,
                 nside=nside,
                 smooth_sigma=effective_sigma,
                 gal_cut=gal_cut,
             )
-        )
 
         sf_dict[name] = sf
+        sf_cov_diag_dict[name] = sf_cov_diag
 
-        sf_cov_diag_dict[name] = (
-            sf_cov_diag
-        )
-
-        survey_weights[name] = (
-
-            len(subdf)
-            / total_survey_memberships
-        )
+        survey_weights[name] = len(subdf) / total_survey_memberships
 
         print(
             f"{name:>15s} | "
@@ -596,10 +469,7 @@ def build_survey_selection_functions(
             f"weight={survey_weights[name]:.4f}"
         )
 
-    print(
-        "\nSelection functions "
-        "successfully built."
-    )
+    print("\nSelection functions successfully built.")
 
     # ----------------------------------------------------------
     # Build immutable validated container
@@ -632,7 +502,6 @@ def generate_sf_variant(
     perturbation_scale: float | None = None,
     rng: Generator | None = None,
 ) -> dict[str, FloatArray]:
-    
     """
     Generate perturbed realizations of survey selection functions.
 
@@ -658,20 +527,15 @@ def generate_sf_variant(
     # ------------------------------------------------------------------
 
     if perturbation_scale is None:
-
-        perturbation_scale = (
-            config.perturbation_scale
-        )
+        perturbation_scale = config.perturbation_scale
 
     # ------------------------------------------------------------------
     # Validation
     # ------------------------------------------------------------------
 
     if perturbation_scale < 0:
-
         raise ValueError(
-            "perturbation_scale must be "
-            "non-negative."
+            "perturbation_scale must be non-negative."
         )
 
     # ------------------------------------------------------------------
@@ -679,7 +543,6 @@ def generate_sf_variant(
     # ------------------------------------------------------------------
 
     if config.use_sel_func is False:
-
         return {}
 
     # ------------------------------------------------------------------
@@ -687,7 +550,6 @@ def generate_sf_variant(
     # ------------------------------------------------------------------
 
     if rng is None:
-
         raise ValueError(
             "A numpy.random.Generator instance "
             "must be provided explicitly."
@@ -697,10 +559,7 @@ def generate_sf_variant(
     # Containers
     # ------------------------------------------------------------------
 
-    sf_dict_perturbed: dict[
-        str,
-        FloatArray,
-    ] = {}
+    sf_dict_perturbed: dict[str, FloatArray] = {}
 
     # ------------------------------------------------------------------
     # Survey perturbation loop
@@ -709,16 +568,12 @@ def generate_sf_variant(
     for survey_name in sf_set.surveys:
 
         sf = np.asarray(
-            sf_set.sf_dict[
-                survey_name
-            ],
+            sf_set.sf_dict[survey_name],
             dtype=float,
         )
 
         sf_cov_diag = np.asarray(
-            sf_set.sf_cov_diag_dict[
-                survey_name
-            ],
+            sf_set.sf_cov_diag_dict[survey_name],
             dtype=float,
         )
 
@@ -727,7 +582,6 @@ def generate_sf_variant(
         # --------------------------------------------------------------
 
         if sf.shape != sf_cov_diag.shape:
-
             raise ValueError(
                 f"Shape mismatch for survey "
                 f"{survey_name}: "
@@ -740,7 +594,6 @@ def generate_sf_variant(
         # --------------------------------------------------------------
 
         if np.any(sf_cov_diag < 0):
-
             raise ValueError(
                 f"Negative covariance entries "
                 f"detected for survey: "
@@ -751,16 +604,11 @@ def generate_sf_variant(
         # Gaussian perturbation
         # --------------------------------------------------------------
 
-        sigma = np.sqrt(
-            sf_cov_diag
-        )
+        sigma = np.sqrt(sf_cov_diag)
 
         noise = rng.normal(
             loc=0.0,
-            scale=(
-                perturbation_scale
-                * sigma
-            ),
+            scale=(perturbation_scale * sigma),
             size=sf.shape,
         )
 
@@ -777,16 +625,12 @@ def generate_sf_variant(
         sf_sum = sf_pert.sum()
 
         if sf_sum <= 0:
-
             sf_pert = sf.copy()
 
         else:
-
             sf_pert /= sf_sum
 
-        sf_dict_perturbed[
-            survey_name
-        ] = np.asarray(
+        sf_dict_perturbed[survey_name] = np.asarray(
             sf_pert,
             dtype=float,
         )
@@ -808,12 +652,10 @@ class SelectionFunctionValidator:
     selection functions.
 
     This validator is only physically meaningful when:
-
         use_sel_func = True
     """
 
     context: RuntimeContext
-
     sf_set: SelectionFunctionSet
 
     # ==========================================================
@@ -849,10 +691,7 @@ class SelectionFunctionValidator:
 
         self.sf_set.validate()
 
-        if not hp.isnsideok(
-            self.sf_set.nside
-        ):
-
+        if not hp.isnsideok(self.sf_set.nside):
             raise ValueError(
                 f"Invalid HEALPix nside: "
                 f"{self.sf_set.nside}"
@@ -863,10 +702,7 @@ class SelectionFunctionValidator:
         print("==================================================")
 
         rows: list[
-            dict[
-                str,
-                float | str,
-            ]
+            dict[str, float | str]
         ] = []
 
         # ------------------------------------------------------
@@ -874,16 +710,10 @@ class SelectionFunctionValidator:
         # ------------------------------------------------------
 
         ordered = sorted(
-
             self.sf_set.surveys,
-
-            key=lambda name: (
-                self.sf_set.survey_weights[name]
-            ),
-
+            key=lambda name: (self.sf_set.survey_weights[name]),
             reverse=True,
         )
-
 
         # ------------------------------------------------------
         # Survey loop
@@ -892,9 +722,7 @@ class SelectionFunctionValidator:
         for survey_name in ordered:
 
             sf = np.asarray(
-                self.sf_set.sf_dict[
-                    survey_name
-                ],
+                self.sf_set.sf_dict[survey_name],
                 dtype=float,
             )
 
@@ -902,10 +730,8 @@ class SelectionFunctionValidator:
             # Numerical validation
             # --------------------------------------------------
 
-            if not np.all(
-                np.isfinite(sf)
-            ):
-
+            if not np.all(np.isfinite(sf)):
+                
                 raise ValueError(
                     f"Selection function "
                     f"{survey_name} contains "
@@ -916,66 +742,52 @@ class SelectionFunctionValidator:
             # Peak position
             # --------------------------------------------------
 
-            max_pix = int(
-                np.argmax(sf)
-            )
+            max_pix = int(np.argmax(sf))
 
             theta_max, phi_max = hp.pix2ang(
                 self.sf_set.nside,
                 max_pix,
             )
 
-            dec_max = (
-                90.0
-                - np.degrees(theta_max)
-            )
-
-            ra_max = np.degrees(
-                phi_max
-            )
+            dec_max = (90.0 - np.degrees(theta_max))
+            ra_max = np.degrees(phi_max)
 
             # --------------------------------------------------
             # Coverage
             # --------------------------------------------------
 
-            threshold = (
-                np.percentile(sf, 99)
-                * 1e-2
-            )
+            # A pixel counts as "active" if its SF value exceeds 1% of
+            # the 99th-percentile SF value. The 99th percentile (rather
+            # than the max) is used so a handful of outlier bright
+            # pixels don't set an unrepresentatively high bar.
+            coverage_threshold_fraction = 1e-2
+            threshold = np.percentile(sf, 99) * coverage_threshold_fraction
 
             active = sf > threshold
-
+            
             coverage = float(
-                np.mean(active)
-                * 100.0
-            )
+                np.mean(active) * 100.0
+                )
 
             # --------------------------------------------------
-            # Entropy
+            # Entropy (Shannon)
             # --------------------------------------------------
 
             positive = sf > 0.0
+            p = sf[positive]
 
             entropy = float(
-                -np.sum(
-                    sf[positive]
-                    * np.log2(
-                        sf[positive]
-                    )
-                )
+                -np.sum(p * np.log2(p))
             )
 
             # --------------------------------------------------
             # Effective sky area
             # --------------------------------------------------
 
-            npix_active = int(
-                np.sum(active)
-            )
+            npix_active = int(np.sum(active))
 
             sky_fraction = float(
-                npix_active
-                / len(sf)
+                npix_active / len(sf)
             )
 
             # --------------------------------------------------
@@ -984,32 +796,14 @@ class SelectionFunctionValidator:
 
             rows.append(
                 {
-
-                    "run_tag":
-                        config.run_tag,
-
-                    "survey":
-                        survey_name,
-
-                    "weight":
-                        self.sf_set.survey_weights[
-                            survey_name
-                        ],
-
-                    "peak_ra":
-                        ra_max,
-
-                    "peak_dec":
-                        dec_max,
-
-                    "active_coverage_pct":
-                        coverage,
-
-                    "sky_fraction":
-                        sky_fraction,
-
-                    "entropy_bits":
-                        entropy,
+                    "run_tag": config.run_tag,
+                    "survey": survey_name,
+                    "weight": self.sf_set.survey_weights[survey_name],
+                    "peak_ra": ra_max,
+                    "peak_dec": dec_max,
+                    "active_coverage_pct": coverage,
+                    "sky_fraction": sky_fraction,
+                    "entropy_bits": entropy,
                 }
             )
 
@@ -1017,9 +811,7 @@ class SelectionFunctionValidator:
             # Diagnostics
             # --------------------------------------------------
 
-            print(
-                f"\n{survey_name}:"
-            )
+            print(f"\n{survey_name}:")
 
             print(
                 f"  Weight: "
@@ -1046,9 +838,7 @@ class SelectionFunctionValidator:
             # Physical sanity checks
             # --------------------------------------------------
 
-            survey_upper = (
-                survey_name.upper()
-            )
+            survey_upper = survey_name.upper()
 
             if (
                 "CHIME" in survey_upper

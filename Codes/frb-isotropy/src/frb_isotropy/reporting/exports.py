@@ -14,6 +14,7 @@ from ..core.config import RuntimeContext
 from ..core.models import (
     JackknifeResult,
     TestStatistics,
+    CovarianceResult,
 )
 
 from ..analysis.diagnostics import (
@@ -245,6 +246,7 @@ class _ReportData:
     sf_validation:        pd.DataFrame | None
     corr_df:              pd.DataFrame | None
     overlap_df:           pd.DataFrame | None
+    covariance_result:    CovarianceResult
 
 
 # ---------------------------------------------------------------------------
@@ -281,8 +283,10 @@ def _extract_report_data(
     if missing:
         raise KeyError(f"Missing required report entries: {missing}")
 
+    stats = results["stats"]
+
     return _ReportData(
-        stats     = results["stats"],
+        stats     = stats,
         jackknife = results["jackknife"],
         df_data   = results["df_data"],
         all_w_h0  = np.asarray(results["all_w_h0"],   dtype=float),
@@ -301,6 +305,7 @@ def _extract_report_data(
             results.get("overlap_df"),
             results.get("intersurvey_overlap"),
         ),
+        covariance_result   = stats.covariance_result,
     )
 
 
@@ -344,7 +349,7 @@ def _build_report_lines(
     )
     _append_optional_corr_matrix(
         lines, data.overlap_df,
-        "Intersurvey Overlap", absolute=False,
+        "Intersurvey Overlap", absolute=False, symmetric=False,
     )
     _append_saved_files(lines, paths)
 
@@ -377,7 +382,7 @@ def _append_run_config(
         "smooth_sigma_deg":       config.smooth_sigma,
         "perturbation_scale":     config.perturbation_scale,
         "nside_jackknife":        config.nside_jackknife,
-        "svd_eigenvalue_cut":     stats.covariance.svd_eigenvalue_cut,
+        "svd_eigenvalue_cut":     stats.covariance_result.diagnostics.svd_eigenvalue_cut,
     })
 
 
@@ -390,7 +395,7 @@ def _append_full_covariance(lines: list[str], data: _ReportData) -> None:
         "p_chi2_empirical":         s.chi2.p_empirical,
         "p_chi2_empirical_floor":   s.chi2.p_empirical_floor,
         "sigma_equiv_empirical":    s.chi2.sigma_equiv,
-        "hartlap_factor":           s.covariance.hartlap_factor,
+        "hartlap_factor":           s.covariance_result.diagnostics.hartlap_factor,
         "rms_normalized_deviation": s.absolute.global_tension,
     })
 
@@ -403,8 +408,8 @@ def _append_svd_statistics(lines: list[str], data: _ReportData) -> None:
         "p_chi2_svd_analytic":    s.svd.p_chi2_svd,
         "p_chi2_svd_empirical":   s.svd.p_svd_empirical,
         "sigma_svd_empirical":    s.svd.sigma_svd_equiv,
-        "svd_modes_kept":         f"{s.covariance.svd_modes_kept}/{s.n_bins}",
-        "svd_retained_condition": s.covariance.svd_condition,
+        "svd_modes_kept":         f"{s.covariance_result.diagnostics.svd_modes_kept}/{s.n_bins}",
+        "svd_retained_condition": s.covariance_result.diagnostics.svd_condition,
     })
 
 
@@ -413,28 +418,32 @@ def _append_covariance_diagnostics(lines: list[str], data: _ReportData) -> None:
     _append_key_values(lines, "Covariance Diagnostics", {
         "mocks":                s.n_mocks,
         "bins":                 s.n_bins,
-        "covariance_rank":      f"{s.covariance.covariance_rank}/{s.n_bins}",
-        "covariance_condition": s.covariance.covariance_condition,
-        "effective_modes":      s.covariance.n_eff,
+        "covariance_rank":      f"{s.covariance_result.diagnostics.covariance_rank}/{s.n_bins}",
+        "covariance_condition": s.covariance_result.diagnostics.covariance_condition,
+        "effective_modes":      s.covariance_result.diagnostics.n_eff,
         "h0_w_shape":           tuple(data.all_w_h0.shape),
         "h0_abs_shape":         tuple(data.all_abs_h0.shape),
+        "covariance_estimator": data.covariance_result.estimator,
+        "covariance_matrix_shape": tuple(data.covariance_result.matrix.shape),
+        "covariance_valid_bins": int(np.sum(data.covariance_result.valid_bins)),
     })
 
 
 def _append_nonparametric_tests(lines: list[str], data: _ReportData) -> None:
     np_ = data.stats.nonparametric
-    _append_key_values(lines, "Non-parametric Profile Tests", {
+    _append_key_values(lines, "Heuristic Non-parametric Profile Diagnostics (KS/AD)", {
+        "interpretation": "heuristic only; angular bins are correlated",
         "w_ks_stat":          np_.ks_w_stat,
-        "w_ks_pvalue":        np_.ks_w_pvalue,
+        "w_ks_pvalue_analytic_heuristic":   np_.ks_w_pvalue,
         "w_ks_empirical_p":   np_.ks_w_empirical_p,
         "w_ad_stat":          np_.ad_w_stat,
-        "w_ad_pvalue":        np_.ad_w_pvalue,
+        "w_ad_pvalue_analytic_heuristic":   np_.ad_w_pvalue,
         "w_ad_empirical_p":   np_.ad_w_empirical_p,
         "abs_ks_stat":        np_.ks_abs_stat,
-        "abs_ks_pvalue":      np_.ks_abs_pvalue,
+        "abs_ks_pvalue_analytic_heuristic": np_.ks_abs_pvalue,
         "abs_ks_empirical_p": np_.ks_abs_empirical_p,
         "abs_ad_stat":        np_.ad_abs_stat,
-        "abs_ad_pvalue":      np_.ad_abs_pvalue,
+        "abs_ad_pvalue_analytic_heuristic": np_.ad_abs_pvalue,
         "abs_ad_empirical_p": np_.ad_abs_empirical_p,
     })
 
@@ -497,16 +506,17 @@ def _append_optional_dataframe(
 
 
 def _append_optional_corr_matrix(
-    lines:    list[str],
-    df:       pd.DataFrame | None,
-    heading:  str,
+    lines:     list[str],
+    df:        pd.DataFrame | None,
+    heading:   str,
     *,
-    absolute: bool,
-    n:        int = 12,
+    absolute:  bool,
+    symmetric: bool = True,
+    n:         int = 12,
 ) -> None:
     if not isinstance(df, pd.DataFrame) or df.empty:
         return
-    top = _top_matrix_pairs(df, n=n, absolute=absolute)
+    top = _top_matrix_pairs(df, n=n, absolute=absolute, symmetric=symmetric)
     lines += [f"## {heading}", "", "```text",
               top.to_string(index=False), "```", ""]
 
@@ -574,7 +584,7 @@ class _TableData:
     sf_validation:     pd.DataFrame | None
     intersurvey_corr:  pd.DataFrame | None
     intersurvey_overlap: pd.DataFrame | None
-    covariance_matrix: FloatArray | None
+    covariance_result: CovarianceResult
 
 
 # ---------------------------------------------------------------------------
@@ -601,6 +611,7 @@ def _resolve_table_paths(
         "jackknife_w_errors":   tables / f"{prefix}_jackknife_w_errors.csv",
         "jackknife_abs_errors": tables / f"{prefix}_jackknife_abs_errors.csv",
         "covariance_matrix":    tables / f"{prefix}_covariance_matrix.csv",
+        "covariance_metadata":  tables / f"{prefix}_covariance_metadata.csv",
         "chi2_bin_diagnostics": tables / f"{prefix}_chi2_bin_diagnostics.csv",
         "svd_mode_contributions": tables / f"{prefix}_svd_mode_contributions.csv",
         "report":               report / f"{prefix}_summary.md",
@@ -621,10 +632,11 @@ def _extract_table_data(
     if missing:
         raise KeyError(f"Missing required results entries: {missing}")
 
-    cov = results.get("covariance_matrix")
+    stats = results["stats"]
+    covariance_result = stats.covariance_result
 
     return _TableData(
-        stats     = results["stats"],
+        stats     = stats,
         jackknife = results["jackknife"],
         theta     = np.asarray(results["theta"],    dtype=float),
         w_obs     = np.asarray(results["w_obs"],    dtype=float),
@@ -639,7 +651,7 @@ def _extract_table_data(
             results.get("overlap_df"),
             results.get("intersurvey_overlap"),
         ),
-        covariance_matrix  = np.asarray(cov, dtype=float) if cov is not None else None,
+        covariance_result  = covariance_result,
     )
 
 
@@ -669,8 +681,8 @@ def _save_stats_summary(
         ("svd",        "chi2_svd",         stats.svd.chi2_svd),
         ("svd",        "chi2_svd_red",     stats.svd.chi2_svd_red),
         ("svd",        "p_svd_empirical",  stats.svd.p_svd_empirical),
-        ("covariance", "effective_modes",  stats.covariance.n_eff),
-        ("covariance", "condition",        stats.covariance.covariance_condition),
+        ("covariance", "effective_modes",  stats.covariance_result.diagnostics.n_eff),
+        ("covariance", "condition",        stats.covariance_result.diagnostics.covariance_condition),
         ("anisotropy", "abs_stat",         stats.absolute.abs_observed_stat),
         ("anisotropy", "abs_p",            stats.absolute.abs_empirical_p),
     ]
@@ -725,11 +737,57 @@ def _save_chi2_diagnostics(
 
 
 def _save_covariance_matrix(
-    cov:  FloatArray | None,
+    covariance_result: CovarianceResult,
     path: Path,
 ) -> None:
-    if cov is not None:
-        pd.DataFrame(cov).to_csv(path, index=False)
+    pd.DataFrame(
+        covariance_result.matrix
+    ).to_csv(
+        path,
+        index=False,
+    )
+
+
+def _save_covariance_metadata(
+    covariance_result: CovarianceResult,
+    path: Path,
+) -> None:
+    diag = covariance_result.diagnostics
+
+    row = {
+        "estimator": covariance_result.estimator,
+        "n_mocks": covariance_result.n_mocks,
+        "n_bins": covariance_result.n_bins,
+        "n_valid_bins": int(
+            np.sum(
+                covariance_result.valid_bins
+            )
+        ),
+        "matrix_shape": str(
+            tuple(
+                covariance_result.matrix.shape
+            )
+        ),
+        "mean_profile_length": int(
+            len(
+                covariance_result.mean_profile
+            )
+        ),
+        "hartlap_factor": diag.hartlap_factor,
+        "covariance_rank": diag.covariance_rank,
+        "covariance_condition": diag.covariance_condition,
+        "effective_modes": diag.n_eff,
+        "svd_modes_kept": diag.svd_modes_kept,
+        "svd_eigenvalue_cut": diag.svd_eigenvalue_cut,
+        "svd_condition": diag.svd_condition,
+    }
+
+    pd.DataFrame(
+        [row]
+    ).to_csv(
+        path,
+        index=False,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -747,7 +805,8 @@ def _save_all_tables(
     _save_stats_summary(data.stats,             paths["stats_summary"])
     _save_jackknife_tables(context, data,        paths)
     extra_results = _save_chi2_diagnostics(context, data, paths)
-    _save_covariance_matrix(data.covariance_matrix, paths["covariance_matrix"])
+    _save_covariance_matrix(data.covariance_result, paths["covariance_matrix"])
+    _save_covariance_metadata(data.covariance_result, paths["covariance_metadata"])
     return extra_results
 
 

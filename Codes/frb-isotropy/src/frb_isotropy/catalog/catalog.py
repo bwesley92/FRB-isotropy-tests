@@ -4,15 +4,10 @@ import healpy as hp
 import numpy as np
 import pandas as pd
 import astropy.units as u
-
 from astropy.coordinates import SkyCoord
 
 from ..core.config import RuntimeContext
-
-from ..core.types import (
-    FloatArray,
-    BoolArray,
-)
+from ..core.types import FloatArray, BoolArray
 
 
 _REQUIRED_CATALOG_COLUMNS = (
@@ -52,31 +47,14 @@ def icrs_to_galactic(
     """
 
     coords = SkyCoord(
-
-        ra=np.asarray(
-            ra_deg,
-            dtype=float,
-        ) * u.deg,
-
-        dec=np.asarray(
-            dec_deg,
-            dtype=float,
-        ) * u.deg,
-
+        ra=np.asarray(ra_deg, dtype=float) * u.deg,
+        dec=np.asarray(dec_deg, dtype=float) * u.deg,
         frame="icrs",
     )
 
     return (
-
-        np.asarray(
-            coords.galactic.l.degree,
-            dtype=float,
-        ),
-
-        np.asarray(
-            coords.galactic.b.degree,
-            dtype=float,
-        ),
+        np.asarray(coords.galactic.l.degree, dtype=float),
+        np.asarray(coords.galactic.b.degree, dtype=float),
     )
 
 
@@ -101,11 +79,9 @@ def icrs_to_galactic_b(
         Galactic latitude b in degrees.
     """
 
-    _, gal_b = (
-        icrs_to_galactic(
-            ra_deg,
-            dec_deg,
-        )
+    _, gal_b = icrs_to_galactic(
+        ra_deg,
+        dec_deg,
     )
 
     return gal_b
@@ -124,9 +100,11 @@ def load_catalog(
 
     path = context.config.catalog_path
 
-    df = pd.read_csv(path)
+    df = pd.read_csv(path).copy()
 
-    df = df.copy()
+    # ------------------------------------------------------------------
+    # Standardize column names
+    # ------------------------------------------------------------------
 
     df.columns = (
         df.columns
@@ -136,28 +114,23 @@ def load_catalog(
     )
 
     missing = [
-
         col
-        for col
-        in _REQUIRED_CATALOG_COLUMNS
-
+        for col in _REQUIRED_CATALOG_COLUMNS
         if col not in df.columns
     ]
 
-    if len(missing) > 0:
-
+    if missing:
         raise ValueError(
-            f"Missing catalog columns:\n"
-            f"{missing}"
+            f"Missing catalog columns:\n{missing}"
         )
+
+    # ------------------------------------------------------------------
+    # Keep required columns
+    # ------------------------------------------------------------------
 
     df = (
         df[
-            [
-                "RA",
-                "DEC",
-                "Reporting_Group_s",
-            ]
+            ["RA", "DEC", "Reporting_Group_s"]
         ]
         .dropna()
         .reset_index(drop=True)
@@ -167,35 +140,19 @@ def load_catalog(
     # Coordinate validation
     # ------------------------------------------------------------------
 
-    df["RA"] = pd.to_numeric(
-        df["RA"],
-        errors="coerce",
-    )
-
-    df["DEC"] = pd.to_numeric(
-        df["DEC"],
-        errors="coerce",
-    )
+    df["RA"] = pd.to_numeric(df["RA"], errors="coerce")
+    df["DEC"] = pd.to_numeric(df["DEC"], errors="coerce")
 
     df = (
-        df.dropna(
-            subset=[
-                "RA",
-                "DEC",
-            ]
-        )
+        df.dropna(subset=["RA", "DEC"])
         .reset_index(drop=True)
     )
 
     valid = (
-
         (df["RA"] >= 0.0)
-        &
-        (df["RA"] < 360.0)
-        &
-        (df["DEC"] >= -90.0)
-        &
-        (df["DEC"] <= 90.0)
+        & (df["RA"] < 360.0)
+        & (df["DEC"] >= -90.0)
+        & (df["DEC"] <= 90.0)
     )
 
     df = (
@@ -203,17 +160,13 @@ def load_catalog(
         .reset_index(drop=True)
     )
 
-    if len(df) == 0:
-
+    if df.empty:
         raise ValueError(
             "Catalog is empty after validation."
         )
 
     print("\n--- Catalog loaded ---")
-
-    print(
-        f"Objects: {len(df)}"
-    )
+    print(f"Objects: {len(df)}")
 
     return df
 
@@ -224,6 +177,7 @@ def apply_mask(
     gal_cut: float | None = None,
     use_mask: bool | None = None,
 ) -> pd.DataFrame:
+
     """
     Apply Galactic latitude mask to observed catalog.
 
@@ -238,32 +192,20 @@ def apply_mask(
     # ------------------------------------------------------------------
 
     if use_mask is None:
-
-        use_mask = (
-            config.use_gal_mask
-        )
+        use_mask = config.use_gal_mask
 
     if gal_cut is None:
-
-        gal_cut = (
-            config.gal_cut
-        )
+        gal_cut = config.gal_cut
 
     # ------------------------------------------------------------------
     # Disabled mode
     # ------------------------------------------------------------------
 
-    if use_mask is False:
+    if not use_mask:
 
-        print(
-            "\n--- Galactic mask disabled ---"
-        )
+        print("\n--- Galactic mask disabled ---")
 
-        return (
-            df
-            .reset_index(drop=True)
-            .copy()
-        )
+        return df.reset_index(drop=True).copy()
 
     # ------------------------------------------------------------------
     # Validation
@@ -281,24 +223,15 @@ def apply_mask(
     # ------------------------------------------------------------------
 
     gal_b = icrs_to_galactic_b(
-
-        df["RA"].to_numpy(
-            dtype=float,
-        ),
-
-        df["DEC"].to_numpy(
-            dtype=float,
-        ),
+        df["RA"].to_numpy(dtype=float),
+        df["DEC"].to_numpy(dtype=float),
     )
 
     # ------------------------------------------------------------------
     # Galactic mask
     # ------------------------------------------------------------------
 
-    mask = (
-        np.abs(gal_b)
-        > gal_cut
-    )
+    mask = np.abs(gal_b) > gal_cut
 
     df_masked = (
         df.loc[mask]
@@ -310,23 +243,10 @@ def apply_mask(
     # Diagnostics
     # ------------------------------------------------------------------
 
-    print(
-        "\n--- Galactic mask applied ---"
-    )
-
-    print(
-        f"gal_cut = ±{gal_cut:.1f} deg"
-    )
-
-    print(
-        f"Remaining objects: "
-        f"{len(df_masked)}"
-    )
-
-    print(
-        f"Removed objects: "
-        f"{len(df) - len(df_masked)}"
-    )
+    print("\n--- Galactic mask applied ---")
+    print(f"gal_cut = ±{gal_cut:.1f} deg")
+    print(f"Remaining objects: {len(df_masked)}")
+    print(f"Removed objects: {len(df) - len(df_masked)}")
 
     return df_masked
 
@@ -369,16 +289,10 @@ def healpix_galactic_mask(
     # ------------------------------------------------------------------
 
     if use_mask is None:
-
-        use_mask = (
-            config.use_gal_mask
-        )
+        use_mask = config.use_gal_mask
 
     if gal_cut is None:
-
-        gal_cut = (
-            config.gal_cut
-        )
+        gal_cut = config.gal_cut
 
     # ------------------------------------------------------------------
     # Validation
@@ -390,20 +304,15 @@ def healpix_galactic_mask(
             "gal_cut must be non-negative."
         )
 
-    npix = hp.nside2npix(
-        nside
-    )
+    npix = hp.nside2npix(nside)
 
     # ------------------------------------------------------------------
     # No Galactic masking
     # ------------------------------------------------------------------
 
-    if use_mask is False:
+    if not use_mask:
 
-        return np.ones(
-            npix,
-            dtype=bool,
-        )
+        return np.ones(npix, dtype=bool)
 
     # ------------------------------------------------------------------
     # Standard Galactic mask
@@ -415,21 +324,14 @@ def healpix_galactic_mask(
     )
 
     ra_deg = np.degrees(phi)
-
-    dec_deg = (
-        90.0
-        - np.degrees(theta)
-    )
+    dec_deg = 90.0 - np.degrees(theta)
 
     gal_b = icrs_to_galactic_b(
         ra_deg,
         dec_deg,
     )
 
-    return (
-        np.abs(gal_b)
-        > gal_cut
-    )
+    return np.abs(gal_b) > gal_cut
 
 
 def rotate_healpix_map_to_galactic(
@@ -438,7 +340,8 @@ def rotate_healpix_map_to_galactic(
     coord_out: str = "G",
 ) -> FloatArray:
     """
-    Rotate a HEALPix map between coordinate systems.
+    Rotate a HEALPix map between Equatorial (ICRS)
+    and Galactic coordinate systems.
 
     Parameters
     ----------
@@ -451,7 +354,7 @@ def rotate_healpix_map_to_galactic(
             "G" = Galactic
 
     coord_out : str
-        Output coordinate system.
+        Output coordinate system ("C" or "G").
 
     Returns
     -------
@@ -463,10 +366,7 @@ def rotate_healpix_map_to_galactic(
     # Input conversion
     # ------------------------------------------------------------------
 
-    hmap = np.asarray(
-        hmap,
-        dtype=float,
-    )
+    hmap = np.asarray(hmap, dtype=float)
 
     # ------------------------------------------------------------------
     # Validation
@@ -479,11 +379,7 @@ def rotate_healpix_map_to_galactic(
             "1-dimensional."
         )
 
-    valid_coords = {
-        "C",
-        "G",
-        "E",
-    }
+    valid_coords = {"C", "G"}
 
     if coord_in not in valid_coords:
 
@@ -497,24 +393,16 @@ def rotate_healpix_map_to_galactic(
             f"Invalid coord_out: {coord_out}"
         )
 
-    if not np.all(
-        np.isfinite(hmap)
-    ):
+    if not np.all(np.isfinite(hmap)):
 
         raise ValueError(
             "Input HEALPix map contains "
             "non-finite values."
         )
 
-    nside = hp.get_nside(
-        hmap
-    )
+    nside = hp.get_nside(hmap)
 
-    npix_expected = hp.nside2npix(
-        nside
-    )
-
-    if len(hmap) != npix_expected:
+    if len(hmap) != hp.nside2npix(nside):
 
         raise ValueError(
             "Input map has inconsistent "
@@ -526,15 +414,12 @@ def rotate_healpix_map_to_galactic(
     # ------------------------------------------------------------------
 
     rotator = hp.Rotator(
-        coord=[
-            coord_out,
-            coord_in,
-        ]
+        coord=[coord_out, coord_in]
     )
 
     theta, phi = hp.pix2ang(
         nside,
-        np.arange(npix_expected),
+        np.arange(len(hmap)),
     )
 
     theta_rot, phi_rot = rotator(

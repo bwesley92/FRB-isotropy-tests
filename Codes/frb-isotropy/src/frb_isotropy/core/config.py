@@ -576,9 +576,6 @@ def validate_analysis_config(
         "overlap_radius_deg":
             config.overlap_radius_deg,
 
-        "overlap_nside":
-            config.overlap_nside,
-
         "svd_eigenvalue_cut":
             config.svd_eigenvalue_cut,
     }

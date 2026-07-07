@@ -32,6 +32,7 @@ from ..core.models import (
     NonParametricStatistics,
     AbsoluteStatistics,
     ChiSquareStatistics,
+    CovarianceResult,
     TestStatistics,
 )
 
@@ -382,6 +383,26 @@ def compute_svd_regularized_chi2(
     )
 
     # ------------------------------------------------------------------
+    # Hartlap factor for the truncated eigenbasis
+    #
+    # The Hartlap et al. (2007) debiasing factor depends on the
+    # dimensionality of the space in which the precision matrix is
+    # estimated/inverted. The `hartlap_factor` argument is derived
+    # from the full covariance dimension (n_bins) and is correct for
+    # the full-space chi-square, but chi2_svd inverts only the
+    # `modes_kept`-dimensional stable eigenbasis, so it must be
+    # rederived here using modes_kept instead of n_bins.
+    # modes_kept <= n_dim is guaranteed by construction, and the
+    # caller already enforces n_mocks > n_dim + 2, so this is always
+    # well-defined and positive.
+    # ------------------------------------------------------------------
+
+    hartlap_factor_svd = float(
+        (n_mocks - modes_kept - 2)
+        / (n_mocks - 1)
+    )
+
+    # ------------------------------------------------------------------
     # Stable inverse eigenvalues
     # ------------------------------------------------------------------
 
@@ -411,7 +432,7 @@ def compute_svd_regularized_chi2(
 
     chi2_svd = float(
 
-        hartlap_factor
+        hartlap_factor_svd
 
         * np.sum(
             delta_modes**2
@@ -421,7 +442,7 @@ def compute_svd_regularized_chi2(
 
     chi2_svd_mocks = (
 
-        hartlap_factor
+        hartlap_factor_svd
 
         * np.sum(
             mock_modes**2
@@ -910,7 +931,7 @@ def _profile_nonparametric_stats(
 
     ad_mock_stats: list[float] = []
 
-    for mock in mocks:
+    for mock_idx, mock in enumerate(mocks):
 
         mock = np.asarray(
             mock,
@@ -927,12 +948,17 @@ def _profile_nonparametric_stats(
 
         # --------------------------------------------------------------
         # Degenerate protection
+        #
+        # Seed varies per mock so that distinct degenerate mocks
+        # receive independent jitter instead of an identical
+        # perturbation (which would make them byte-for-byte equal
+        # and distort the empirical KS/AD calibration).
         # --------------------------------------------------------------
 
         if np.std(mock) < 1e-15:
 
             mock = mock + np.random.default_rng(
-                2
+                1000 + mock_idx
             ).normal(
                 0.0,
                 1e-12,
@@ -1054,7 +1080,7 @@ def _profile_nonparametric_stats(
     if verbose:
 
         print(
-            "\n--- KS / AD profile tests ---"
+            "\n--- Heuristic KS / AD profile diagnostics ---"
         )
 
         print(
@@ -1063,7 +1089,7 @@ def _profile_nonparametric_stats(
         )
 
         print(
-            f"KS p-value     = "
+            f"KS p-value [heuristic] = "
             f"{ks_pvalue:.5f}"
         )
 
@@ -1078,7 +1104,7 @@ def _profile_nonparametric_stats(
         )
 
         print(
-            f"AD p-value     = "
+            f"AD p-value [heuristic] = "
             f"{ad_pvalue:.5f}"
         )
 
@@ -1373,7 +1399,7 @@ def compute_nonparametric_tests(
         )
 
         print(
-            f"KS p-value          = "
+            f"KS p-value [heuristic] = "
             f"{w_stats.ks_pvalue:.5f}"
         )
 
@@ -1388,7 +1414,7 @@ def compute_nonparametric_tests(
         )
 
         print(
-            f"AD p-value          = "
+            f"AD p-value [heuristic] = "
             f"{w_stats.ad_pvalue:.5f}"
         )
 
@@ -1409,7 +1435,7 @@ def compute_nonparametric_tests(
         )
 
         print(
-            f"KS p-value          = "
+            f"KS p-value [heuristic] = "
             f"{abs_stats.ks_pvalue:.5f}"
         )
 
@@ -1424,7 +1450,7 @@ def compute_nonparametric_tests(
         )
 
         print(
-            f"AD p-value          = "
+            f"AD p-value [heuristic] = "
             f"{abs_stats.ad_pvalue:.5f}"
         )
 
@@ -1734,6 +1760,47 @@ def compute_absolute_statistics(
         )
     )
 
+    # --------------------------------------------------------------
+    # Normalized global deviation
+    # --------------------------------------------------------------
+
+    abs_mock_mean = float(
+        np.mean(
+            abs_mock_totals
+        )
+    )
+
+    abs_mock_std = float(
+        np.std(
+            abs_mock_totals,
+            ddof=1,
+        )
+    ) if len(abs_mock_totals) > 1 else 0.0
+
+    if (
+        np.isfinite(abs_mock_std)
+        and abs_mock_std > 0.0
+    ):
+
+        global_tension = float(
+            abs(
+                abs_observed_total
+                - abs_mock_mean
+            )
+            / abs_mock_std
+        )
+
+    elif np.isclose(
+        abs_observed_total,
+        abs_mock_mean,
+    ):
+
+        global_tension = 0.0
+
+    else:
+
+        global_tension = np.inf
+
     return AbsoluteStatistics(
 
         abs_observed_stat=(
@@ -1744,7 +1811,7 @@ def compute_absolute_statistics(
             abs_empirical_p
         ),
 
-        global_tension=np.nan,
+        global_tension=global_tension,
     )
 
 
@@ -2002,7 +2069,7 @@ def compute_statistics(
             cov=cov,
             hartlap_factor=covariance_diag.hartlap_factor,
             dof=int(
-                svd_stats.modes_kept
+                all_w_h0_valid.shape[1]
             ),
         )
     )
@@ -2060,6 +2127,29 @@ def compute_statistics(
         chi2_stats=chi2_stats,
     )
 
+    covariance_result = CovarianceResult(
+        matrix=np.asarray(
+            cov,
+            dtype=float,
+        ).copy(),
+        mean_profile=np.asarray(
+            h0_mean,
+            dtype=float,
+        ).copy(),
+        valid_bins=np.asarray(
+            valid_bins,
+            dtype=bool,
+        ).copy(),
+        diagnostics=covariance_diag,
+        estimator="LedoitWolf",
+        n_mocks=int(
+            all_w_h0_valid.shape[0]
+        ),
+        n_bins=int(
+            all_w_h0_valid.shape[1]
+        ),
+    )
+
     # ------------------------------------------------------------------
     # Outputs
     # ------------------------------------------------------------------
@@ -2078,9 +2168,6 @@ def compute_statistics(
             absolute_stats
         ),
 
-        covariance=(
-            covariance_diag
-        ),
 
         n_mocks=(
             all_w_h0_valid.shape[0]
@@ -2089,4 +2176,6 @@ def compute_statistics(
         n_bins=(
             all_w_h0_valid.shape[1]
         ),
+
+        covariance_result=covariance_result,
     )

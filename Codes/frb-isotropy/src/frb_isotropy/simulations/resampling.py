@@ -277,12 +277,7 @@ def compute_jackknife_realization(
         )
     )
 
-    w_jk = np.nan_to_num(
-        w_jk,
-        nan=0.0,
-        posinf=0.0,
-        neginf=0.0,
-    )
+    w_jk = np.asarray(w_jk, dtype=float)
 
     abs_jk = get_absolute_sum(
         context,
@@ -975,16 +970,7 @@ def _single_bootstrap_realization(
         )
     )
 
-    # ------------------------------------------------------------------
-    # Numerical protection
-    # ------------------------------------------------------------------
-
-    w_boot = np.nan_to_num(
-        w_boot,
-        nan=0.0,
-        posinf=0.0,
-        neginf=0.0,
-    )
+    w_boot = np.asarray(w_boot, dtype=float)
 
     # ------------------------------------------------------------------
     # Absolute anisotropy estimator

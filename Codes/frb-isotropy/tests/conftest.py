@@ -11,7 +11,7 @@ def valid_config() -> AnalysisConfig:
 
         project_root=Path.cwd(),
         outputs_root=Path.cwd() / "outputs",
-        catalog_path=__file__,
+        catalog_path=Path(__file__),
         
         use_gal_mask=False,
         use_sel_func=False,
